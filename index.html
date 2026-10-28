@@ -196,8 +196,7 @@ input[readonly]{background:var(--soft);border-color:var(--ac)}
 <span class="tag" id="status">Balanced</span>
 </div>
 
-<div class="card" id="cphotos"><h2>Proof photos (needed to save)</h2><p class="hint">System pic, Record pic and Visa summary pic are saved with this date. Only admin can add, save or delete photos. Everyone can view them after saving.</p><div id="cproofs"></div></div>
-
+<div class="card" id="cphotos"><h2>Proof photos (optional)</h2><p class="hint">System pic, Record pic and Visa summary pic are saved with this date. Only admin can add, save or delete photos. Everyone can view them after saving.</p><div id="cproofs"></div></div>
 <div class="btns">
 <button id="save" class="p">Save this day</button>
 <button id="export">Export Excel</button>
@@ -288,9 +287,6 @@ async function saveDay(){
   var date=$("date").value;
   if(!date){toast("Please select a date");return;}
   if(!isAdmin){toast("Only admin can save. Please login as admin.");return;}
-  var miss=[];
-  for(var ci=0;ci<CSL.length;ci++){var ck=CSL[ci][0];if(!pendC[ck]){var r0=null;try{r0=await pGet("c:"+date+"|"+ck);}catch(e){}if(!r0)miss.push(CSL[ci][1]);}}
-  if(miss.length){toast("Photos needed to save: "+miss.join(", "),4500);$("cphotos").scrollIntoView({behavior:"smooth",block:"center"});return;}
   if(!(await ask(RECS[date]&&lf!==date?"A closing for "+date+" is already saved. Overwrite it?":"Save closing for "+dayOf(date)+" "+date+"?")))return;
   try{for(var pk in pendC){await pPut({id:"c:"+date+"|"+pk,date:date,slot:pk,data:pendC[pk],savedAt:Date.now()});}pendC={};}catch(e){toast("Could not save photos in this browser");return;}
   RECS[date]={v:getVals(),savedAt:Date.now()};lf=date;
