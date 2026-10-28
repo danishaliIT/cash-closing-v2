@@ -197,6 +197,7 @@ input[readonly]{background:var(--soft);border-color:var(--ac)}
 </div>
 
 <div class="card" id="cphotos"><h2>Proof photos (optional)</h2><p class="hint">System pic, Record pic and Visa summary pic are saved with this date. Only admin can add, save or delete photos. Everyone can view them after saving.</p><div id="cproofs"></div></div>
+
 <div class="btns">
 <button id="save" class="p">Save this day</button>
 <button id="export">Export Excel</button>
@@ -218,7 +219,7 @@ input[readonly]{background:var(--soft);border-color:var(--ac)}
 <div class="card tot"><h2>Total counted</h2><div class="big" id="ocount">Rs 0</div></div>
 <div class="card"><h2>Last hour sale</h2><div class="row two"><span class="lbl">Sale (subtracted)</span><input type="number" inputmode="decimal" id="ols" placeholder="0"></div></div>
 <div class="card"><h2>Opening (Total counted − Last hour sale)</h2><div class="diff ok" id="oval">Rs 0</div><p class="hint" style="margin:6px 0 0">This opening fills automatically into Cash Closing for the same date.</p></div>
-<div class="card"><h2>Proof photos</h2><p class="hint">Everyone can view. Only admin can upload, save or delete photos.</p><div id="proofs"></div></div>
+<div class="card"><h2>Proof photos (optional)</h2><p class="hint">Everyone can view. Only admin can upload, save or delete photos.</p><div id="proofs"></div></div>
 <div class="btns"><button id="osave" class="p">Save opening</button><button id="oreset">Reset</button></div>
 <div class="card"><div class="hhead"><h2>Saved openings</h2></div><div id="olist"></div></div>
 </div>
@@ -228,8 +229,27 @@ input[readonly]{background:var(--soft);border-color:var(--ac)}
 <div id="cmodal"><div class="mbox"><p id="cmsg" style="margin:0 0 14px;font-weight:600"></p><div class="btns" style="margin:0"><button class="p" id="cyes">Yes</button><button id="cno">Cancel</button></div></div></div>
 <div id="lb"><img id="lbi" alt=""></div>
 <div id="dmodal"><div class="dbox"><div id="dbody"></div></div></div>
+
+<!-- External Scripts -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
 <script>
+// Your web app's Firebase configuration (With your real keys inserted)
+const firebaseConfig = {
+  apiKey: "AIzaSyAuKLF-oeoUPyMqcOmG2yUnVmrUKldO1G4",
+  authDomain: "cash-desk-app.firebaseapp.com",
+  projectId: "cash-desk-app",
+  storageBucket: "cash-desk-app.firebasestorage.app",
+  messagingSenderId: "258187080838",
+  appId: "1:258187080838:web:704f07e77ba8ebf8164d07",
+  measurementId: "G-ER0QJ1JHRW"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 var NOTES=[5000,1000,500,100,50,20,10];
 var OTHERS=[["oldcash","Old Cash"],["foodpanda","Foodpanda"],["return","Return"],["pandago","PandaGo"],["adv","Adv"],["visa","Visa"],["jazzcash","JazzCash"],["coins","Coins"],["expense","Expense"]];
 var RK="cashclosing_records_v3",DK="cashclosing_draft_v3";
@@ -282,23 +302,37 @@ function calc(){
   $("sv").textContent=rec&&same(rec.v,v)?"Saved ✓":"Not saved";
   try{localStorage.setItem(DK,JSON.stringify({date:date,v:v,lf:lf}));}catch(e){}
 }
-function persist(){try{localStorage.setItem(RK,JSON.stringify(RECS));return true;}catch(e){return false;}}
+
 async function saveDay(){
   var date=$("date").value;
   if(!date){toast("Please select a date");return;}
   if(!isAdmin){toast("Only admin can save. Please login as admin.");return;}
   if(!(await ask(RECS[date]&&lf!==date?"A closing for "+date+" is already saved. Overwrite it?":"Save closing for "+dayOf(date)+" "+date+"?")))return;
-  try{for(var pk in pendC){await pPut({id:"c:"+date+"|"+pk,date:date,slot:pk,data:pendC[pk],savedAt:Date.now()});}pendC={};}catch(e){toast("Could not save photos in this browser");return;}
-  RECS[date]={v:getVals(),savedAt:Date.now()};lf=date;
-  var ok=persist();renderHist();calc();
-  toast(ok?"Saved: "+dayOf(date)+" "+date:"Could not save in this browser");renderCProofs();
+  
+  toast("Saving to Cloud...");
+  try{
+    for(var pk in pendC){
+      await db.collection("cproofs").doc("c:"+date+"|"+pk).set({id:"c:"+date+"|"+pk,date:date,slot:pk,data:pendC[pk],savedAt:Date.now()});
+    }
+    pendC={};
+    await db.collection("closings").doc(date).set({v:getVals(),savedAt:Date.now()});
+    lf=date;
+    toast("Saved to Cloud: "+dayOf(date)+" "+date);
+    renderCProofs();
+  }catch(e){
+    toast("Error saving to cloud. Saved locally.");
+    RECS[date]={v:getVals(),savedAt:Date.now()};
+    localStorage.setItem(RK,JSON.stringify(RECS));
+  }
 }
+
 function openDay(date){
   if(!RECS[date])return;
   $("date").value=date;setVals(RECS[date].v);lf=date;pendC={};applyOpening();calc();renderHist();renderCProofs();
   window.scrollTo({top:0,behavior:"smooth"});toast("Opened "+dayOf(date)+" "+date);
 }
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e;}
+
 function renderHist(){
   var L=$("list");L.innerHTML="";
   var dates=Object.keys(RECS).sort().reverse();
@@ -311,20 +345,26 @@ function renderHist(){
     var rt=el("div","r",fmt(r.total));
     var sm=el("small",r.diff===0?"ok":"bad",statusOf(r.diff)+(r.diff!==0?" "+fmt(Math.abs(r.diff)):""));rt.appendChild(sm);
     var x=el("button","x","✕");x.title="Delete";
-    x.onclick=async function(e){e.stopPropagation();if(!(await ask("Delete saved closing of "+d+" and its photos?")))return;delete RECS[d];CSL.forEach(function(s){pDel("c:"+d+"|"+s[0]).catch(function(){});});if(lf===d)lf=null;persist();renderHist();calc();};
+    x.onclick=async function(e){
+      e.stopPropagation();
+      if(!(await ask("Delete saved closing of "+d+" and its photos?")))return;
+      await db.collection("closings").doc(d).delete();
+      CSL.forEach(function(s){db.collection("cproofs").doc("c:"+d+"|"+s[0]).delete().catch(function(){});});
+      if(lf===d)lf=null;
+      renderHist();calc();
+    };
     row.onclick=function(){showDay(d);};
     row.appendChild(l);row.appendChild(rt);if(isAdmin)row.appendChild(x);L.appendChild(row);
   });
 }
+
 async function saveFile(name,buf){
-  try{
-    if(window.claude&&claude.use){var dl=await claude.use("downloads");if(dl){await dl.save({filename:name,data:buf});return;}}
-  }catch(e){if(e&&e.code==="declined")return;}
   var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([buf],{type:"application/octet-stream"}));
   a.download=name;document.body.appendChild(a);a.click();
   setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},800);
 }
 function toBuf(ws,sheet){var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,sheet);return XLSX.write(wb,{type:"array",bookType:"xlsx"});}
+
 async function exportDay(){
   if(typeof XLSX==="undefined"){toast("Excel library did not load. Check internet.");return;}
   var v=getVals(),r=compute(v),date=$("date").value||today();
@@ -336,6 +376,7 @@ async function exportDay(){
   var ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=[{wch:34},{wch:10},{wch:16}];
   await saveFile("cash-closing-"+date+".xlsx",toBuf(ws,"Closing"));
 }
+
 async function exportAll(){
   if(typeof XLSX==="undefined"){toast("Excel library did not load. Check internet.");return;}
   var dates=Object.keys(RECS).sort();
@@ -349,10 +390,12 @@ async function exportAll(){
   var ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=head.map(function(h,i){return {wch:i<4?16:12};});
   await saveFile("cash-closing-all-days.xlsx",toBuf(ws,"All days"));
 }
+
 async function resetAll(){
   if(!(await ask("Reset all fields? Saved days will not be deleted.")))return;
   setVals({});$("date").value=today();lf=null;pendC={};applyOpening();calc();renderHist();renderCProofs();toast("Form reset");
 }
+
 document.addEventListener("input",calc);
 $("date").addEventListener("change",function(){
   var d=this.value;
@@ -364,12 +407,14 @@ $("export").onclick=exportDay;
 $("exportAll").onclick=exportAll;
 $("reset").onclick=resetAll;
 $("print").onclick=function(){window.print();};
+
 var AH="f5ebd32502ad351375782934209e95961eda8006cca96380d849ac9b1de4821b",isAdmin=false,OK="cashclosing_openings_v1",OPENS={},olf=null,af=false;
 var OO=[["visa","Visa"],["jazzcash","JazzCash"],["coins","Coins"],["foodpanda","Foodpanda"]];
 try{isAdmin=sessionStorage.getItem("cc_admin")==="1";}catch(e){}
-try{OPENS=JSON.parse(localStorage.getItem(OK)||"{}")||{};}catch(e){OPENS={};}
+
 function ask(m){return new Promise(function(res){$("cmsg").textContent=m;var c=$("cmodal");c.classList.add("on");function done(v){c.classList.remove("on");$("cyes").onclick=null;$("cno").onclick=null;res(v);}$("cyes").onclick=function(){done(true);};$("cno").onclick=function(){done(false);};});}
 function same(a,b){for(var k in b){if((a[k]||"")!==(b[k]||""))return false;}return true;}
+
 NOTES.forEach(function(d){$("onotes").insertAdjacentHTML("beforeend",'<div class="row"><span class="chip">'+d+'</span><input type="number" inputmode="numeric" min="0" data-on="'+d+'" placeholder="0"><span class="amt" id="oa'+d+'">0</span></div>');});
 OO.forEach(function(o){$("oothers").insertAdjacentHTML("beforeend",'<div class="row two"><span class="lbl">'+o[1]+'</span><input type="number" inputmode="decimal" data-oo="'+o[0]+'" placeholder="0"></div>');});
 function oKey(i){return i.dataset.on?"n"+i.dataset.on:i.dataset.oo?"o"+i.dataset.oo:"ls";}
@@ -377,6 +422,7 @@ function oIn(){return document.querySelectorAll("#v-open input[data-on],#v-open 
 function getO(){var v={};oIn().forEach(function(i){v[oKey(i)]=i.value;});return v;}
 function setO(v){oIn().forEach(function(i){i.value=(v&&v[oKey(i)])||"";});}
 function computeO(v){var s=0;NOTES.forEach(function(d){s+=num(v["n"+d])*d;});OO.forEach(function(o){s+=num(v["o"+o[0]]);});var ls=num(v.ls);return {sum:s,ls:ls,opening:s-ls};}
+
 function calcO(){
   var v=getO(),r=computeO(v),d=$("odate").value;
   document.querySelectorAll("[data-on]").forEach(function(i){var n=+i.dataset.on,e=$("oa"+n),t=(num(i.value)*n).toLocaleString();if(e.textContent!==t){e.textContent=t;pop(e,"flash");}});
@@ -384,21 +430,30 @@ function calcO(){
   tween($("ocount"),r.sum);tween($("oval"),r.opening);
   $("osv").textContent=OPENS[d]&&same(OPENS[d].v,v)?"Saved ✓":"Not saved";
 }
-function persistO(){try{localStorage.setItem(OK,JSON.stringify(OPENS));return true;}catch(e){return false;}}
+
 function applyOpening(){
   var d=$("date").value,o=OPENS[d],inp=$("opening"),saved=RECS[d]&&lf===d;
   if(o&&!saved){inp.value=Math.round(computeO(o.v).opening*100)/100;inp.readOnly=true;af=true;$("ohint").style.display="block";}
   else{if(af&&!saved)inp.value="";inp.readOnly=false;af=false;$("ohint").style.display="none";}
 }
+
 async function saveO(){
   var d=$("odate").value;
   if(!d){toast("Please select a date");return;}
   if(!isAdmin){toast("Only admin can save. Please login as admin.");return;}
   if(!(await ask(OPENS[d]&&olf!==d?"An opening for "+d+" is already saved. Overwrite it?":"Save opening for "+dayOf(d)+" "+d+"?")))return;
-  OPENS[d]={v:getO(),savedAt:Date.now()};olf=d;
-  var ok=persistO();renderOpens();applyOpening();calc();calcO();
-  toast(ok?"Opening saved for "+d:"Could not save in this browser");
+  
+  toast("Saving Opening to Cloud...");
+  try {
+    await db.collection("openings").doc(d).set({v:getO(),savedAt:Date.now()});
+    olf=d;
+    applyOpening();calc();calcO();
+    toast("Opening saved to Cloud for "+d);
+  } catch(e) {
+    toast("Error saving to Cloud");
+  }
 }
+
 function renderOpens(){
   var L=$("olist");L.innerHTML="";
   var ds=Object.keys(OPENS).sort().reverse();
@@ -410,14 +465,26 @@ function renderOpens(){
     var rt=el("div","r",fmt(r.opening));
     row.onclick=function(){showOpen(d);};
     row.appendChild(l);row.appendChild(rt);
-    if(isAdmin){var x=el("button","x","✕");x.title="Delete";x.onclick=async function(e){e.stopPropagation();if(!(await ask("Delete opening of "+d+"?")))return;delete OPENS[d];if(olf===d)olf=null;persistO();renderOpens();applyOpening();calc();calcO();};row.appendChild(x);}
+    if(isAdmin){
+      var x=el("button","x","✕");x.title="Delete";
+      x.onclick=async function(e){
+        e.stopPropagation();
+        if(!(await ask("Delete opening of "+d+"?")))return;
+        await db.collection("openings").doc(d).delete();
+        if(olf===d)olf=null;
+        applyOpening();calc();calcO();
+      };
+      row.appendChild(x);
+    }
     L.appendChild(row);
   });
 }
+
 $("odate").addEventListener("change",function(){var d=this.value;if(OPENS[d]){setO(OPENS[d].v);olf=d;toast("Opened saved opening of "+d);}else{olf=null;}pend={};calcO();renderOpens();renderProofs();});
 $("osave").onclick=saveO;
 $("oreset").onclick=async function(){if(!(await ask("Reset opening form? Saved openings are not deleted.")))return;setO({});$("odate").value=today();olf=null;pend={};calcO();renderOpens();renderProofs();};
 document.addEventListener("input",function(e){if(e.target.closest&&e.target.closest("#v-open"))calcO();});
+
 function closeSide(){$("side").classList.remove("open");$("ov").classList.remove("on");}
 function show(id){
   document.querySelectorAll(".view").forEach(function(v){v.classList.toggle("on",v.id===id);});
@@ -429,6 +496,7 @@ $("menu").onclick=function(){$("side").classList.add("open");$("ov").classList.a
 $("ov").onclick=closeSide;
 $("tMenu").onclick=$("menu").onclick;
 $("nightBtn").onclick=function(){toast("Night Cash Closing is coming soon");};
+
 function paintAdmin(){
   $("who").textContent=isAdmin?"Signed in: Admin ✓":"Visitor (view only)";
   $("admBtn").textContent=isAdmin?"Admin logout":"Admin login";
@@ -436,6 +504,7 @@ function paintAdmin(){
   $("save").textContent=isAdmin?"Save this day":"🔒 Save (admin only)";$("osave").textContent=isAdmin?"Save opening":"🔒 Save (admin only)";
   renderHist();renderOpens();renderProofs();renderCProofs();
 }
+
 async function sha(s){var b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));return Array.prototype.map.call(new Uint8Array(b),function(x){return x.toString(16).padStart(2,"0");}).join("");}
 async function doLogin(){
   try{
@@ -450,33 +519,32 @@ $("admBtn").onclick=function(){
   else{$("modal").classList.add("on");$("au").focus();}
 };
 $("tLogin").onclick=$("admBtn").onclick;$("lgo").onclick=doLogin;$("lgc").onclick=function(){$("modal").classList.remove("on");};
+
 $("bk").onclick=async function(){var s=JSON.stringify({closings:RECS,openings:OPENS});await saveFile("cash-backup-"+today()+".json",new TextEncoder().encode(s).buffer);};
 $("rs").onclick=function(){if(!isAdmin){toast("Only admin can restore");return;}$("rsf").click();};
 $("rsf").onchange=function(){
   var f=this.files[0];if(!f)return;var rd=new FileReader();
   rd.onload=function(){
     try{
-      var d=JSON.parse(rd.result),n=0,sk=0;
-      [["closings",RECS],["openings",OPENS]].forEach(function(p){var src=d[p[0]]||{};Object.keys(src).forEach(function(k){if(!p[1][k]||isAdmin){p[1][k]=src[k];n++;}else{sk++;}});});
-      persist();persistO();renderHist();renderOpens();applyOpening();calc();calcO();
-      toast("Added "+n+" records"+(sk?", "+sk+" skipped (already saved)":""));
+      var d=JSON.parse(rd.result);
+      if(d.closings){Object.keys(d.closings).forEach(k=>db.collection("closings").doc(k).set(d.closings[k]));}
+      if(d.openings){Object.keys(d.openings).forEach(k=>db.collection("openings").doc(k).set(d.openings[k]));}
+      toast("Data restored to Cloud");
     }catch(e){toast("This is not a valid backup file");}
   };
   rd.readAsText(f);this.value="";
 };
-var pend={},rp=0,DBP=null;
+
+var pend={},rp=0;
 var SLOTS=[["sys","System pic","Morning handover sale"],["visa","Visa pic","Visa payment proof"]];
-function idb(){return DBP||(DBP=new Promise(function(res,rej){var r=indexedDB.open("cashproofs",1);r.onupgradeneeded=function(){r.result.createObjectStore("p",{keyPath:"id"});};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};}));}
-function idbDo(mode,fn){return idb().then(function(db){return new Promise(function(res,rej){var t=db.transaction("p",mode),q=fn(t.objectStore("p"));t.oncomplete=function(){res(q&&q.result);};t.onerror=function(){rej(t.error);};});});}
-function pGet(id){return idbDo("readonly",function(s){return s.get(id);});}
-function pPut(o){return idbDo("readwrite",function(s){return s.put(o);});}
-function pDel(id){return idbDo("readwrite",function(s){return s.delete(id);});}
+
 function shrink(file){return new Promise(function(res,rej){
   var fr=new FileReader();fr.onerror=function(){rej();};
   fr.onload=function(){var im=new Image();im.onerror=function(){rej();};
-    im.onload=function(){var sc=Math.min(1,1400/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);c.getContext("2d").drawImage(im,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",0.8));};
+    im.onload=function(){var sc=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);c.getContext("2d").drawImage(im,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",0.6));};
     im.src=fr.result;};
   fr.readAsDataURL(file);});}
+
 function proofBox(S,d,rec){
   var k=S[0],b=el("div","proof"),img=el("div","pimg"),src=pend[k]||(rec&&rec.data);
   b.appendChild(el("div","pt",S[1]+" · "+S[2]));
@@ -493,7 +561,10 @@ function proofBox(S,d,rec){
       var bs=el("button","p","Save photo");
       bs.onclick=async function(){
         if(!(await ask("Save "+S[1]+" for "+d+"?")))return;
-        try{await pPut({id:d+"|"+k,date:d,slot:k,data:pend[k],savedAt:Date.now()});delete pend[k];toast("Photo saved");}catch(e){toast("Could not save photo in this browser");}
+        try{
+          await db.collection("openproofs").doc(d+"|"+k).set({id:d+"|"+k,date:d,slot:k,data:pend[k],savedAt:Date.now()});
+          delete pend[k];toast("Photo saved");
+        }catch(e){toast("Could not save photo");}
         renderProofs();
       };
       var bx=el("button",null,"Discard");bx.onclick=function(){delete pend[k];renderProofs();};
@@ -501,25 +572,28 @@ function proofBox(S,d,rec){
     }
     if(rec&&!pend[k]){
       var bd=el("button","danger","Delete");
-      bd.onclick=async function(){if(!(await ask("Delete "+S[1]+" of "+d+"?")))return;try{await pDel(d+"|"+k);}catch(e){}toast("Photo deleted");renderProofs();};
+      bd.onclick=async function(){if(!(await ask("Delete "+S[1]+" of "+d+"?")))return;try{await db.collection("openproofs").doc(d+"|"+k).delete();}catch(e){}toast("Photo deleted");renderProofs();};
       row.appendChild(bd);
     }
     b.appendChild(row);
   }
   return b;
 }
+
 async function renderProofs(){
   var t=++rp,d=$("odate").value,frag=document.createDocumentFragment();
   for(var i=0;i<SLOTS.length;i++){
     var rec=null;
-    try{if(d)rec=await pGet(d+"|"+SLOTS[i][0]);}catch(e){}
+    try{if(d){var doc=await db.collection("openproofs").doc(d+"|"+SLOTS[i][0]).get();if(doc.exists)rec=doc.data();}}catch(e){}
     frag.appendChild(proofBox(SLOTS[i],d,rec));
   }
   if(t!==rp)return;
   $("proofs").innerHTML="";$("proofs").appendChild(frag);
 }
+
 var pendC={},rc=0,CSL=[["sys","System pic","Sale system report"],["rec","Record pic","Cash record"],["vsum","Visa summary pic","Visa machine summary"]];
 function canAddC(){return isAdmin;}
+
 function cBox(S,d,rec){
   var k=S[0],b=el("div","proof"),img=el("div","pimg"),src=pendC[k]||(rec&&rec.data);
   b.appendChild(el("div","pt",S[1]+" · "+S[2]));
@@ -535,22 +609,33 @@ function cBox(S,d,rec){
     row.appendChild(fi);row.appendChild(bc);
     if(pendC[k]){var bx=el("button",null,"Discard");bx.onclick=function(){delete pendC[k];renderCProofs();};row.appendChild(bx);}
   }
-  if(isAdmin&&rec&&!pendC[k]){var bd=el("button","danger","Delete");bd.onclick=async function(){if(!(await ask("Delete "+S[1]+" of "+d+"?")))return;try{await pDel("c:"+d+"|"+k);}catch(e){}toast("Photo deleted");renderCProofs();};row.appendChild(bd);}
+  if(isAdmin&&rec&&!pendC[k]){var bd=el("button","danger","Delete");bd.onclick=async function(){if(!(await ask("Delete "+S[1]+" of "+d+"?")))return;try{await db.collection("cproofs").doc("c:"+d+"|"+k).delete();}catch(e){}toast("Photo deleted");renderCProofs();};row.appendChild(bd);}
   if(row.children.length)b.appendChild(row);
   return b;
 }
+
 async function renderCProofs(){
   var t=++rc,d=$("date").value,frag=document.createDocumentFragment();
-  for(var i=0;i<CSL.length;i++){var rec=null;try{if(d)rec=await pGet("c:"+d+"|"+CSL[i][0]);}catch(e){}frag.appendChild(cBox(CSL[i],d,rec));}
+  for(var i=0;i<CSL.length;i++){
+    var rec=null;
+    try{if(d){var doc=await db.collection("cproofs").doc("c:"+d+"|"+CSL[i][0]).get();if(doc.exists)rec=doc.data();}}catch(e){}
+    frag.appendChild(cBox(CSL[i],d,rec));
+  }
   if(t!==rc)return;
   $("cproofs").innerHTML="";$("cproofs").appendChild(frag);
 }
+
 function dl(l,v,c){var d=el("div","dr");d.appendChild(el("span",null,l));d.appendChild(el("b",c||null,v));return d;}
 function dsec(box,t){box.appendChild(el("h2","dh",t));}
+
 async function dphotos(box,pairs){
   var g=el("div","dph");
   for(var i=0;i<pairs.length;i++){
-    var rec=null;try{rec=await pGet(pairs[i][0]);}catch(e){}
+    var rec=null;
+    try{
+      var doc = await db.collection(pairs[i][0].startsWith("c:") ? "cproofs" : "openproofs").doc(pairs[i][0]).get();
+      if(doc.exists) rec = doc.data();
+    }catch(e){}
     var f=el("figure");
     if(rec&&rec.data){var im=document.createElement("img");im.src=rec.data;im.alt=pairs[i][1];(function(s){im.onclick=function(){$("lbi").src=s;$("lb").classList.add("on");};})(rec.data);f.appendChild(im);}
     else{f.appendChild(el("div","pimg none","No photo"));}
@@ -558,6 +643,7 @@ async function dphotos(box,pairs){
   }
   box.appendChild(g);
 }
+
 function dbtns(box,editFn,delFn){
   var b=el("div","btns");b.style.margin="16px 0 0";
   var c=el("button","p","Close");c.onclick=function(){$("dmodal").classList.remove("on");};b.appendChild(c);
@@ -567,19 +653,25 @@ function dbtns(box,editFn,delFn){
   }
   box.appendChild(b);
 }
+
 function editDay(d){show("v-close");openDay(d);}
 async function delDay(d){
   if(!isAdmin)return;
   if(!(await ask("Delete saved closing of "+d+" and its photos?")))return;
-  delete RECS[d];CSL.forEach(function(s){pDel("c:"+d+"|"+s[0]).catch(function(){});});if(lf===d)lf=null;
-  persist();renderHist();calc();renderCProofs();$("dmodal").classList.remove("on");toast("Deleted "+d);
+  await db.collection("closings").doc(d).delete();
+  CSL.forEach(function(s){db.collection("cproofs").doc("c:"+d+"|"+s[0]).delete().catch(function(){});});
+  if(lf===d)lf=null;
+  renderHist();calc();renderCProofs();$("dmodal").classList.remove("on");toast("Deleted "+d);
 }
+
 function editOpen(d){show("v-open");$("odate").value=d;setO(OPENS[d].v);olf=d;pend={};calcO();renderOpens();renderProofs();}
 async function delOpen(d){
   if(!isAdmin)return;
   if(!(await ask("Delete opening of "+d+"?")))return;
-  delete OPENS[d];if(olf===d)olf=null;persistO();renderOpens();applyOpening();calc();calcO();$("dmodal").classList.remove("on");toast("Deleted opening of "+d);
+  await db.collection("openings").doc(d).delete();
+  if(olf===d)olf=null;applyOpening();calc();calcO();$("dmodal").classList.remove("on");toast("Deleted opening of "+d);
 }
+
 async function showDay(d){
   var rec=RECS[d];if(!rec)return;
   var v=rec.v,r=compute(v),box=$("dbody");box.innerHTML="";
@@ -600,6 +692,7 @@ async function showDay(d){
   $("dmodal").classList.add("on");
   await dphotos(ph,CSL.map(function(s){return ["c:"+d+"|"+s[0],s[1]];}));
 }
+
 async function showOpen(d){
   var rec=OPENS[d];if(!rec)return;
   var v=rec.v,r=computeO(v),box=$("dbody");box.innerHTML="";
@@ -615,6 +708,7 @@ async function showOpen(d){
   $("dmodal").classList.add("on");
   await dphotos(ph,[[d+"|sys","System pic · Handover sale"],[d+"|visa","Visa pic"]]);
 }
+
 $("dmodal").onclick=function(e){if(e.target===this)this.classList.remove("on");};
 $("lb").onclick=function(){this.classList.remove("on");};
 var ALL=function(){return Array.prototype.slice.call(document.querySelectorAll(".view.on input")).filter(function(i){return i.type!=="file";});};
@@ -626,13 +720,23 @@ document.addEventListener("keydown",function(e){
   var list=ALL(),ix=list.indexOf(e.target);if(ix<0){if(e.target.closest("#modal"))doLogin();return;}var nxt=list[ix+1];
   if(nxt){nxt.focus();if(nxt.select)nxt.select();}else{e.target.blur();}
 });
-try{RECS=JSON.parse(localStorage.getItem(RK)||"{}")||{};}catch(e){RECS={};}
+
+// REAL-TIME CLOUD LISTENERS
+db.collection("closings").onSnapshot(snapshot => {
+  RECS = {};
+  snapshot.forEach(doc => { RECS[doc.id] = doc.data(); });
+  renderHist(); calc();
+});
+
+db.collection("openings").onSnapshot(snapshot => {
+  OPENS = {};
+  snapshot.forEach(doc => { OPENS[doc.id] = doc.data(); });
+  renderOpens(); applyOpening(); calcO();
+});
+
 $("date").value=today();
-try{
-  var dr=JSON.parse(localStorage.getItem(DK)||"null");
-  if(dr){if(dr.date)$("date").value=dr.date;setVals(dr.v);lf=dr.lf||null;}
-}catch(e){}
-$("odate").value=today();applyOpening();paintAdmin();calcO();calc();
+$("odate").value=today();
+applyOpening();paintAdmin();calcO();calc();
 </script>
 </body>
 </html>
