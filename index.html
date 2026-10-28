@@ -236,14 +236,17 @@ input.ghost::placeholder{color:transparent;text-shadow:0 0 3px rgba(37,99,235,.9
 <div class="card"><h2>Safe Cash (number of notes)</h2><div id="sn"></div><div id="so"></div><p class="hint">Expense weeks and petty cash fill from the previous saved night: that day's week total + its Expense today. You can edit them.</p><div class="sum"><span>Safe total</span><span id="stot">Rs 0</span></div></div>
 <div class="card"><h2>Till (number of notes)</h2><div id="tn"></div><div id="to"></div><p class="hint">Visa fields accept sums like 113121+4662.</p><div class="sum"><span>Till total</span><span id="ttot">Rs 0</span></div></div>
 <div class="card tot"><h2>Total (Safe + Till)</h2><div class="big" id="ntot">Rs 0</div></div>
-<div class="card"><h2>Sale &amp; Expense</h2>
-<div class="row two"><span class="lbl">Customers</span><input type="number" inputmode="numeric" data-k="cust" placeholder="0"></div>
-<div class="row two"><span class="lbl">Today sale</span><input type="number" inputmode="decimal" data-k="sale" placeholder="0"></div>
+<div class="card"><h2>Results</h2>
+<div class="row two"><span class="lbl">Total sale</span><input type="number" inputmode="decimal" data-k="tsl" placeholder="0"></div>
 <div class="row two"><span class="lbl">Last hour sale</span><input type="number" inputmode="decimal" data-k="ls" placeholder="0"></div>
+<div class="row two"><span class="lbl">Visa</span><input type="text" inputmode="text" data-k="rvisa" placeholder="e.g. 1000+500"></div>
+<div class="row two"><span class="lbl">JazzCash</span><input type="number" inputmode="decimal" data-k="rjazz" placeholder="0"></div>
+<div class="row two"><span class="lbl">Day sale (Total − Last hour)</span><input type="text" id="ntoday" readonly value="Rs 0"></div>
+<div class="row two"><span class="lbl">Customers</span><input type="number" inputmode="numeric" data-k="cust" placeholder="0"></div>
 <div class="row two"><span class="lbl">Petty cash</span><input type="number" inputmode="decimal" data-k="petty" placeholder="0"></div>
 <div class="row two"><span class="lbl">Expense today</span><input type="number" inputmode="decimal" data-k="exp" placeholder="0"></div>
 <div class="row two"><span class="lbl">Add today's expense to</span><select data-k="ew"><option value="w1">1st week</option><option value="w2">2nd week</option><option value="w3">3rd week</option><option value="w4">4th week</option></select></div></div>
-<div class="card"><h2>Difference (Safe + Till − Petty Cash − Today Sale)</h2><div class="diff" id="ndiff">Rs 0</div><span class="tag" id="nstat">Balanced</span></div>
+<div class="card"><h2>Difference (Safe + Till − Petty Cash − Day Sale)</h2><div class="diff" id="ndiff">Rs 0</div><span class="tag" id="nstat">Balanced</span></div>
 <div class="card"><h2>Proof photos (optional)</h2><p class="hint">System pics (today sale, last hour sale) and Visa pics. Only admin can add, save or delete. Everyone can view after saving.</p><div id="nproofs"></div></div>
 <div class="btns"><button id="nsave" class="p">Save night closing</button><button id="nreset">Reset</button></div>
 <div class="card"><div class="hhead"><h2>Saved nights</h2></div><p class="hint">Tap a night to see full details. Only admin can save, edit or delete.</p><div id="nlist"></div></div>
@@ -256,7 +259,7 @@ input.ghost::placeholder{color:transparent;text-shadow:0 0 3px rgba(37,99,235,.9
 </div>
 <div class="view" id="v-sales">
 <div class="head"><div><h1>Sales Graph</h1><p>Daily, weekly and monthly sale</p></div><input type="month" id="smonth"></div>
-<div class="card"><div class="row two"><span class="lbl">Sale source</span><select id="ssrc"><option value="n">Night closing (today sale)</option><option value="m">Morning closing (sale)</option><option value="b">Morning + night (added)</option></select></div></div>
+<div class="card"><div class="row two"><span class="lbl">Sale source</span><select id="ssrc"><option value="n">Night closing (day sale)</option><option value="m">Morning closing (sale)</option><option value="b">Morning + night (added)</option></select></div></div>
 <div class="card tot"><h2>Month sale</h2><div class="big" id="smt">Rs 0</div></div>
 <div class="card"><div id="ssum"></div></div>
 <div class="card"><h2>Date-wise sale</h2><div id="g1"></div><p class="hint" id="g1c">Tap a bar to see the amount.</p></div>
@@ -765,7 +768,7 @@ document.addEventListener("keydown",function(e){
 
 // NIGHT CLOSING + EXPENSE TRACKING
 var NR={},nlf=null,pendN={},nt=false,rn=0;
-var SO=[["scoins","Coins"],["sold1","Old Cash"],["sold2","Old Cash 2"],["spanda","PandaGo"],["sfood","Foodpanda"],["sjazz","JazzCash QR"],["w1","Expense 1st week"],["w2","Expense 2nd week"],["w3","Expense 3rd week"],["w4","Expense 4th week"]];
+var SO=[["scoins","Coins"],["sold1","Old Cash"],["sold2","Old Cash 2"],["spanda","PandaGo"],["sfood","Foodpanda"],["w1","Expense 1st week"],["w2","Expense 2nd week"],["w3","Expense 3rd week"],["w4","Expense 4th week"]];
 var TO=[["tcoins","Coins"],["told","Old Cash"],["tpanda","PandaGo"],["tfood","Foodpanda"],["tjazz","JazzCash QR"],["tvisa1","Visa 1"],["tvisa2","Visa 2"],["tret","Return"]];
 var NSL=[["tsale","System pic","Today sale"],["lsale","System pic","Last hour sale"],["visa1","Visa 1 pic","Visa 1 proof"],["visa2","Visa 2 pic","Visa 2 proof"]];
 function sv(s){return String(s==null?"":s).split("+").reduce(function(a,x){var n=parseFloat(x);return a+(isNaN(n)?0:n);},0);}
@@ -775,18 +778,19 @@ SO.forEach(function(o){$("so").insertAdjacentHTML("beforeend",nrow(o));});
 TO.forEach(function(o){$("to").insertAdjacentHTML("beforeend",nrow(o));});
 function nIn(){return document.querySelectorAll("#v-night input[data-k],#v-night select[data-k]");}
 function gN(){var v={};nIn().forEach(function(i){v[i.dataset.k]=i.value;});return v;}
-function sN(v){nIn().forEach(function(i){i.value=(v&&v[i.dataset.k])||(i.tagName==="SELECT"?"w1":"");});}
+function sN(v){nIn().forEach(function(i){i.value=(v&&v[i.dataset.k])||(i.tagName==="SELECT"?"w1":"");});if(v&&(v.tsl==null||v.tsl==="")&&v.sale)document.querySelector('#v-night [data-k="tsl"]').value=String(sv(v.sale)+sv(v.ls));}
+function dayS(v){return v.tsl!=null&&v.tsl!==""?sv(v.tsl)-sv(v.ls):sv(v.sale);}
 function cN(v){
   var s=0,t=0;
   NOTES.forEach(function(d){s+=sv(v["sn"+d])*d;t+=sv(v["tn"+d])*d;});
   SO.forEach(function(o){s+=sv(v[o[0]]);});TO.forEach(function(o){t+=sv(v[o[0]]);});
-  var pe=sv(v.petty),sa=sv(v.sale);
+  var pe=sv(v.petty),sa=dayS(v);
   return {s:s,t:t,tot:s+t,petty:pe,sale:sa,ls:sv(v.ls),exp:sv(v.exp),diff:s+t-pe-sa};
 }
 function calcN(){
   var v=gN(),r=cN(v),d=$("ndate").value;
   NOTES.forEach(function(n){["s","t"].forEach(function(p){var e=$(p+"a"+n),x=(sv(v[p+"n"+n])*n).toLocaleString();if(e.textContent!==x){e.textContent=x;pop(e,"flash");}});});
-  $("nday").textContent=dayOf(d)||"Evening cash sheet";
+  $("nday").textContent=dayOf(d)||"Evening cash sheet";$("ntoday").value=fmt(r.sale);
   tween($("stot"),r.s);tween($("ttot"),r.t);tween($("ntot"),r.tot);tween($("ndiff"),r.diff);
   $("ndiff").classList.toggle("ok",r.diff===0);$("ndiff").classList.toggle("bad",r.diff!==0);
   $("nstat").textContent=statusOf(r.diff);$("nstat").className="tag "+(r.diff===0?"ok":"bad");
@@ -849,7 +853,7 @@ async function showN(d){
     box.appendChild(dl(g[4],fmt(g[3]),"tt"));
   });
   dsec(box,"Results");
-  box.appendChild(dl("Total (Safe + Till)",fmt(r.tot),"tt"));if(sv(v.cust))box.appendChild(dl("Customers",String(sv(v.cust))));box.appendChild(dl("Today sale",fmt(r.sale)));box.appendChild(dl("Last hour sale",fmt(r.ls)));
+  box.appendChild(dl("Total (Safe + Till)",fmt(r.tot),"tt"));if(sv(v.cust))box.appendChild(dl("Customers",String(sv(v.cust))));box.appendChild(dl("Total sale",fmt(r.sale+r.ls)));box.appendChild(dl("Last hour sale",fmt(r.ls)));box.appendChild(dl("Visa",fmt(sv(v.rvisa))));box.appendChild(dl("JazzCash",fmt(sv(v.rjazz))));box.appendChild(dl("Day sale",fmt(r.sale)));
   box.appendChild(dl("Petty cash",fmt(r.petty)));box.appendChild(dl("Expense today",fmt(r.exp)));
   box.appendChild(dl("Difference ("+statusOf(r.diff)+")",fmt(r.diff),r.diff===0?"ok":"bad"));
   dsec(box,"Proof photos");var ph=el("div");box.appendChild(ph);
@@ -921,7 +925,7 @@ db.collection("closings").onSnapshot(function(){renderExp();renderSales();});
 // SALES GRAPH + LAST NIGHT'S TILL AS BLURRED OPENING
 function pad2(n){return String(n).padStart(2,"0");}
 function sh(n){return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?Math.round(n/1e3)+"k":String(Math.round(n));}
-function saleOf(d,src){var n=NR[d]?sv(NR[d].v.sale):0,m=RECS[d]?sv(RECS[d].v.sale):0;return src==="m"?m:src==="b"?n+m:n;}
+function saleOf(d,src){var n=NR[d]?dayS(NR[d].v):0,m=RECS[d]?sv(RECS[d].v.sale):0;return src==="m"?m:src==="b"?n+m:n;}
 function bars(id,L,V,T){
   var box=$(id),cap=$(id+"c"),W=600,H=220,pl=40,pb=24,pt=12,n=L.length,mx=Math.max.apply(null,V.concat([1])),bw=(W-pl-4)/n,ph=H-pt-pb;
   var s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Sale chart">';
