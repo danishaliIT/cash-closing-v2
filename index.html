@@ -484,8 +484,8 @@ function proofBox(S,d,rec){
   else{img.className="pimg none";img.textContent="No photo yet";}
   b.appendChild(img);
   if(isAdmin){
-    if(pend[k])b.appendChild(el("div","hint","Not saved yet. Tap Save photo."));
-    var row=el("div","prow"),fi=document.createElement("input");fi.type="file";fi.accept="image/*";fi.style.display="none";
+  if(pendC[k])b.appendChild(el("div","hint","Photo ready to save."));
+  var fi=document.createElement("input");fi.type="file";fi.accept="image/*";fi.style.display="none";
     fi.onchange=async function(){var f=fi.files[0];if(!f)return;try{pend[k]=await shrink(f);renderProofs();}catch(e){toast("Could not read this photo");}};
     var bc=el("button",null,(rec||pend[k])?"Change photo":"Take / choose photo");bc.onclick=function(){fi.click();};
     row.appendChild(fi);row.appendChild(bc);
