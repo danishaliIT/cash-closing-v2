@@ -246,7 +246,7 @@ input.ghost::placeholder{color:transparent;text-shadow:0 0 3px rgba(37,99,235,.9
 <div class="row two"><span class="lbl">Petty cash</span><input type="number" inputmode="decimal" data-k="petty" placeholder="0"></div>
 <div class="row two"><span class="lbl">Expense today</span><input type="number" inputmode="decimal" data-k="exp" placeholder="0"></div>
 <div class="row two"><span class="lbl">Add today's expense to</span><select data-k="ew"><option value="w1">1st week</option><option value="w2">2nd week</option><option value="w3">3rd week</option><option value="w4">4th week</option></select></div></div>
-<div class="card"><h2>Difference (Safe + Till − Petty Cash − Day Sale)</h2><div class="diff" id="ndiff">Rs 0</div><span class="tag" id="nstat">Balanced</span></div>
+<div class="card"><h2>Difference (Safe + Till − Petty Cash − Total Sale)</h2><div class="diff" id="ndiff">Rs 0</div><span class="tag" id="nstat">Balanced</span></div>
 <div class="card"><h2>Proof photos (optional)</h2><p class="hint">System pics (today sale, last hour sale) and Visa pics. Only admin can add, save or delete. Everyone can view after saving.</p><div id="nproofs"></div></div>
 <div class="btns"><button id="nsave" class="p">Save night closing</button><button id="nreset">Reset</button></div>
 <div class="card"><div class="hhead"><h2>Saved nights</h2></div><p class="hint">Tap a night to see full details. Only admin can save, edit or delete.</p><div id="nlist"></div></div>
@@ -780,12 +780,13 @@ function nIn(){return document.querySelectorAll("#v-night input[data-k],#v-night
 function gN(){var v={};nIn().forEach(function(i){v[i.dataset.k]=i.value;});return v;}
 function sN(v){nIn().forEach(function(i){i.value=(v&&v[i.dataset.k])||(i.tagName==="SELECT"?"w1":"");});if(v&&(v.tsl==null||v.tsl==="")&&v.sale)document.querySelector('#v-night [data-k="tsl"]').value=String(sv(v.sale)+sv(v.ls));}
 function dayS(v){return v.tsl!=null&&v.tsl!==""?sv(v.tsl)-sv(v.ls):sv(v.sale);}
+function totS(v){return v.tsl!=null&&v.tsl!==""?sv(v.tsl):sv(v.sale)+sv(v.ls);}
 function cN(v){
   var s=0,t=0;
   NOTES.forEach(function(d){s+=sv(v["sn"+d])*d;t+=sv(v["tn"+d])*d;});
   SO.forEach(function(o){s+=sv(v[o[0]]);});TO.forEach(function(o){t+=sv(v[o[0]]);});
-  var pe=sv(v.petty),sa=dayS(v);
-  return {s:s,t:t,tot:s+t,petty:pe,sale:sa,ls:sv(v.ls),exp:sv(v.exp),diff:s+t-pe-sa};
+  var pe=sv(v.petty),sa=dayS(v),ts=totS(v);
+  return {s:s,t:t,tot:s+t,petty:pe,sale:sa,ls:sv(v.ls),exp:sv(v.exp),ts:ts,diff:s+t-pe-ts};
 }
 function calcN(){
   var v=gN(),r=cN(v),d=$("ndate").value;
